@@ -13,7 +13,7 @@
 #include <vector>
 #include <iostream>
 #include <cassert>
-#include "sphere.cpp"
+#include "shapes.cpp"
 
 #if defined __linux__ || defined __APPLE__
 // "Compiled for Linux
@@ -31,12 +31,14 @@ float mix(const float &a, const float &b, const float &mix)
 }
 
 //TODO
-Vec3f trace(const Vec3f &rayorig, const Vec3f &raydir, const std::vector<Sphere> &spheres, const int &depth) {
+Vec3f trace(const Vec3f &rayorig, const Vec3f &raydir, const std::vector<Sphere> &spheres, const std::vector<Cube> &cubes, const int &depth) {
     
     float dist = INFINITY; // Dist to intersection
     const Sphere *sphere = NULL; // Create sphere object
+    const Cube *cube = NULL;
     float t0;
     float t1;
+    float tc;
     // Check each object for intersection
     for(int i = 0; i < spheres.size(); i++) {
         // t0, t1 are intersection points
@@ -55,69 +57,114 @@ Vec3f trace(const Vec3f &rayorig, const Vec3f &raydir, const std::vector<Sphere>
     }
     // If there's no intersection, then sphere will be NULL. Return a bogus Vec3f.
     if(!sphere){
-        return Vec3f(2);
+        // Check each object for intersection
+        for(int i = 0; i < cubes.size(); i++) {
+            // t0, t1 are intersection points
+            t0 = INFINITY;
+            t1 = INFINITY;
+            // Gives t0 and t1 back from intersect function
+            if(cubes[i].intersect(rayorig, raydir, tc)) {
+                    dist = tc;
+                    cube = &cubes[i];
+            }
+        }
+        if(!cube) {
+            return Vec3f(0.0, 0.0, 0.0);
+        }
     }
     Vec3f sColor = 0; // Surface color of the sphere
     Vec3f pHit = rayorig + raydir * dist; // Point of intersection with the sphere
-    Vec3f nHit = pHit - sphere->center; // Normal of the surface of intersection
+    Vec3f nHit;
+    if(!sphere) {
+        nHit = pHit - cube->bounds[0];
+    } else {
+        nHit = pHit - sphere->center; // Normal of the surface of intersection
+    }
     nHit.normalize(); // Normalize normal dir
     // START REFLECTION AND REFRACTION
     
-    float bias = 1e-8;
+    float bias = 1e-2;
     
     bool inside = false;
     if(raydir.dot(nHit) > 0) {
         nHit = -nHit;
         inside = true;
     }
-    if((sphere->transparency > 0 || sphere->reflection > 0) && depth < MAX_RAY_DEPTH) {
+    if(sphere && (sphere->transparency > 0 || sphere->reflection > 0) && depth < MAX_RAY_DEPTH) {
         float facingratio = -raydir.dot(nHit);
         float fresneleffect = mix(pow(1 - facingratio, 3), 1, 0.1);
-        Vec3f refldir = raydir - nHit * 2 * raydir.dot(nHit);
-        refldir.normalize();
-        Vec3f reflection = trace(pHit + nHit * bias, refldir, spheres, depth + 1);
+        Vec3f reflection = Vec3f(0.0,0.0,0.0);
+        if(sphere->reflection) {
+            Vec3f refldir = raydir - nHit * 2 * raydir.dot(nHit);
+            refldir.normalize();
+            reflection = trace(pHit + nHit * bias, refldir, spheres, cubes, depth + 1);
+        }
         Vec3f refraction = 0;
         if(sphere->transparency) {
-            float ior = 1.1, eta = (inside) ? ior : 1 / ior;
+            float ior = 0.9, eta = (inside) ? ior : 1 / ior;
             float cosi = -nHit.dot(raydir);
             float k = 1 - eta * eta * (1 - cosi * cosi);
             Vec3f refrdir = raydir * eta + nHit * (eta * cosi - sqrt(k));
             refrdir.normalize();
-            refraction = trace(pHit - nHit * bias, refrdir, spheres, depth + 1);
+            refraction = trace(pHit - nHit * bias, refrdir, spheres, cubes, depth + 1);
         }
         
-        sColor = (reflection * fresneleffect) + (refraction * (1 - fresneleffect) * sphere->transparency);
+        sColor = (reflection * 0.7) + (refraction * (1/fresneleffect) * 0.8 * sphere->transparency);
         
     } else {
     
         // LIGHTS
-        for(int i = 0; i < spheres.size(); ++i) {
-            if(spheres[i].emissionColor.x > 0) {
-                Vec3f trans = 1;
-                Vec3f lightDir = spheres[i].center - pHit;
-                lightDir.normalize();
-                for(int j = 0; j < spheres.size(); ++j) {
-                    if(i != j) {
-                        float t0, t1;
-                        if(spheres[j].intersect(pHit + nHit * bias, lightDir, t0, t1)) {
+        if(sphere) {
+            for(int i = 0; i < spheres.size(); ++i) {
+                if(spheres[i].emissionColor.x > 0) {
+                    Vec3f trans = 1;
+                    Vec3f lightDir = spheres[i].center - pHit;
+                    lightDir.normalize();
+                    for(int j = 0; j < spheres.size(); ++j) {
+                        if(i != j) {
+                            float t0, t1;
+                            if(spheres[j].intersect(pHit + nHit * bias, lightDir, t0, t1)) {
+                                trans = 0;
+                                break;
+                            }
+                        }
+                    }
+                    sColor += (sphere->surfaceColor) * (trans) * std::max(float(0), nHit.dot(lightDir)) * (spheres[i].emissionColor);
+                }
+            }
+        } else if(cube) {
+            for(int i = 0; i < spheres.size(); ++i) {
+                if(spheres[i].emissionColor.x > 0) {
+                    Vec3f trans = 1;
+                    Vec3f lightDir = spheres[i].center - pHit;
+                    lightDir.normalize();
+                    for(int j = 0; j < cubes.size(); ++j) {
+                        float t0;
+                        if(cubes[j].intersect(pHit + nHit * bias, lightDir, t0)) {
                             trans = 0;
                             break;
                         }
                     }
+                    printf("%f, ", nHit.x);
+                    sColor += (cube->c) * (trans) * std::max(float(0), nHit.dot(lightDir)) * (spheres[i].emissionColor);
                 }
-                sColor += sphere->surfaceColor * trans * std::max(float(0), nHit.dot(lightDir)) * spheres[i].emissionColor;
             }
         }
     }
     
-    return sColor + sphere->emissionColor;
+    if(sphere) {
+        return sColor + sphere->emissionColor;
+    } else {
+        return cube->c;
+    }
+    
     
 }
 
 //TODO
-void render(const std::vector<Sphere> &spheres)
+void render(const std::vector<Sphere> &spheres, const std::vector<Cube> &cubes)
 {
-    unsigned width = 1920, height = 1080;
+    unsigned width = 5120, height = 2880;
     Vec3f *image = new Vec3f[width * height], *pixel = image;
     float invWidth = 1 / float(width), invHeight = 1 / float(height);
     float fov = 30, aspectratio = width / float(height);
@@ -129,7 +176,7 @@ void render(const std::vector<Sphere> &spheres)
             float yy = (1 - 2 * ((y + 0.5) * invHeight)) * angle;
             Vec3f raydir(xx, yy, -1);
             raydir.normalize();
-            *pixel = trace(Vec3f(0), raydir, spheres, 0);
+            *pixel = trace(Vec3f(0), raydir, spheres, cubes, 0);
         }
     }
     
@@ -151,17 +198,17 @@ int main(int argc, char **argv)
 {
     srand48(13);
     std::vector<Sphere> spheres;
+    std::vector<Cube> cubes;
     // position, radius, surface color, reflectivity, transparency, emission color
-    spheres.push_back(Sphere(Vec3f( 3.0, 0.0, -20), 2, Vec3f(0.50, 0.50, 0.50), 0, 0.5));
-    spheres.push_back(Sphere(Vec3f( 1.0, 0.0, -22), 1, Vec3f(0.50, 0.50, 0.50), 0, 0.0));
-    spheres.push_back(Sphere(Vec3f( 0.0, -2003, -20), 2000, Vec3f(0.10, 0.10, 0.10), 0, 0.0));
-    spheres.push_back(Sphere(Vec3f( 0.0, 0.0, -2030), 2000, Vec3f(0.10, 0.30, 0.10), 0, 0.0));
+    spheres.push_back(Sphere(Vec3f( -6.0, 0.0, -30), 2, Vec3f(0.50, 0.50, 0.50), 0.0, 0.0));
+    spheres.push_back(Sphere(Vec3f( 0.0, 0.0, -40), 2, Vec3f(0.50, 0.50, 0.50), 0.5, 0.0));
+    spheres.push_back(Sphere(Vec3f( 4.0, 0.0, -23), 2, Vec3f(0.90, 0.90, 0.90), 0.0, 0.1));
+    spheres.push_back(Sphere(Vec3f( 0.0, -20003, -20), 20000, Vec3f(0.5, 0.2, 0.3), 0, 0.0));
+    spheres.push_back(Sphere(Vec3f( 0.0, 0.0, -20060), 20000, Vec3f(0.10, 0.30, 0.10), 0, 0.0));
+    //cubes.push_back(Cube(Vec3f(-6.0, -3.0, -37), Vec3f(6.0, 3.0, -31), Vec3f(0.50, 0.0, 0.00)));
     // light
-    //spheres.push_back(Sphere(Vec3f( 0.0,  20, -30),     3, Vec3f(0.00, 0.00, 0.00), 0, 0.0, Vec3f(3)));
-    spheres.push_back(Sphere(Vec3f( 0.0,  30, -10),     1, Vec3f(0.00, 0.00, 0.00), 0, 0.0, Vec3f(3)));
-    //spheres.push_back(Sphere(Vec3f( 6.0,  20, 0),     3, Vec3f(0.00, 0.00, 0.00), 0, 0.0, Vec3f(3)));
-    //spheres.push_back(Sphere(Vec3f( -6.0,  20, 0),     3, Vec3f(0.00, 0.00, 0.00), 0, 0.0, Vec3f(3)));
-    render(spheres);
+    spheres.push_back(Sphere(Vec3f( 3.0,  40, -10),     3, Vec3f(0.00, 0.00, 0.00), 0, 0.0, Vec3f(2)));
+    render(spheres, cubes);
     
     return 0;
 }
