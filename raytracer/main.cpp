@@ -101,7 +101,7 @@ Vec3f trace(const Vec3f &rayorig, const Vec3f &raydir, const std::vector<Sphere>
         }
         Vec3f refraction = 0;
         if(sphere->transparency) {
-            float ior = 0.9, eta = (inside) ? ior : 1 / ior;
+            float ior = 1.345, eta = (inside) ? ior : 1 / ior;
             float cosi = -nHit.dot(raydir);
             float k = 1 - eta * eta * (1 - cosi * cosi);
             Vec3f refrdir = raydir * eta + nHit * (eta * cosi - sqrt(k));
@@ -124,7 +124,7 @@ Vec3f trace(const Vec3f &rayorig, const Vec3f &raydir, const std::vector<Sphere>
                         if(i != j) {
                             float t0, t1;
                             if(spheres[j].intersect(pHit + nHit * bias, lightDir, t0, t1)) {
-                                trans = 0;
+                                trans = 0.3;
                                 break;
                             }
                         }
@@ -164,7 +164,7 @@ Vec3f trace(const Vec3f &rayorig, const Vec3f &raydir, const std::vector<Sphere>
 //TODO
 void render(const std::vector<Sphere> &spheres, const std::vector<Cube> &cubes)
 {
-    unsigned width = 5120, height = 2880;
+    unsigned width = 1920, height = 1080;
     Vec3f *image = new Vec3f[width * height], *pixel = image;
     float invWidth = 1 / float(width), invHeight = 1 / float(height);
     float fov = 30, aspectratio = width / float(height);
@@ -207,7 +207,7 @@ int main(int argc, char **argv)
     spheres.push_back(Sphere(Vec3f( 0.0, 0.0, -20060), 20000, Vec3f(0.10, 0.30, 0.10), 0, 0.0));
     //cubes.push_back(Cube(Vec3f(-6.0, -3.0, -37), Vec3f(6.0, 3.0, -31), Vec3f(0.50, 0.0, 0.00)));
     // light
-    spheres.push_back(Sphere(Vec3f( 3.0,  40, -10),     3, Vec3f(0.00, 0.00, 0.00), 0, 0.0, Vec3f(2)));
+    spheres.push_back(Sphere(Vec3f(3.0,  40, -10),     3, Vec3f(0.00, 0.00, 0.00), 0, 0.0, Vec3f(2)));
     render(spheres, cubes);
     
     return 0;
