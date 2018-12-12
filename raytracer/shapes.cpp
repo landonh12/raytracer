@@ -52,6 +52,8 @@ public:
     }
 };
 
+typedef Vec3<float> Vec3f;
+
 class Triangle {
     
 public:
@@ -63,16 +65,13 @@ public:
     Triangle(const Vec3f &v0, const Vec3f &v1, const Vec3f &v2, const Vec3f &surfaceColor) :
     v0(v0), v1(v1), v2(v2), surfaceColor(surfaceColor) {}
     
-    bool rayTriangleIntersect(
-                              const Vec3f &orig, const Vec3f &dir,
-                              const Vec3f &v0, const Vec3f &v1, const Vec3f &v2,
-                              float &t, Vec3f &N)
-    {
+    bool intersect( const Vec3f &orig, const Vec3f &dir, float &t, Vec3f &N) const {
         // compute plane's normal
         Vec3f v0v1 = v1 - v0;
         Vec3f v0v2 = v2 - v0;
         // no need to normalize
-        N = v0v1 * v0v2; // N
+        N = v0v1.cross(v0v2); // N
+        N.normalize();
         float area2 = N.length();
         
         // Step 1: finding P
@@ -91,11 +90,7 @@ public:
         if (t < 0) return false; // the triangle is behind
         
         // compute the intersection point using equation 1
-        Vec3f dir2 = dir;
-        dir2.x = t * dir.x;
-        dir2.y = t * dir.y;
-        dir2.z = t * dir.z;
-        Vec3f P = orig + dir2;
+        Vec3f P = orig + dir * t;
         
         // Step 2: inside-outside test
         Vec3f C; // vector perpendicular to triangle's plane
@@ -103,19 +98,19 @@ public:
         // edge 0
         Vec3f edge0 = v1 - v0;
         Vec3f vp0 = P - v0;
-        C = edge0 * vp0;
+        C = edge0.cross(vp0);
         if (N.dot(C) < 0) return false; // P is on the right side
         
         // edge 1
         Vec3f edge1 = v2 - v1;
         Vec3f vp1 = P - v1;
-        C = edge1 * vp1;
+        C = edge1.cross(vp1);
         if (N.dot(C) < 0)  return false; // P is on the right side
         
         // edge 2
         Vec3f edge2 = v0 - v2;
         Vec3f vp2 = P - v2;
-        C = edge2 * vp2;
+        C = edge2.cross(vp2);
         if (N.dot(C) < 0) return false; // P is on the right side;
         
         return true; // this ray hits the triangle
